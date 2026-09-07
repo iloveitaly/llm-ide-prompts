@@ -281,4 +281,3 @@ Python rules.
     filtered, omitted = filter_markdown_by_globs(text, [])
     assert filtered == text
     assert omitted == []
-

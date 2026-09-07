@@ -344,4 +344,3 @@ def test_delete_default_ignores_node_modules_and_venv():
         assert node_modules_agents.exists()
         assert venv_agents.exists()
         assert "were skipped because they don't match" not in result.stdout
-

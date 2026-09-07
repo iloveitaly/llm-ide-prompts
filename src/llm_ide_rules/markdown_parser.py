@@ -1,6 +1,7 @@
 """Markdown parsing utilities using markdown-it-py."""
 
 import fnmatch
+from collections.abc import Sequence
 from typing import NamedTuple
 
 from markdown_it import MarkdownIt
@@ -114,15 +115,13 @@ def parse_sections(text: str) -> tuple[list[str], dict[str, SectionData]]:
 
 
 def filter_markdown_by_globs(
-    text: str, exclude_globs: list[str]
+    text: str, exclude_globs: Sequence[str]
 ) -> tuple[str, list[str]]:
     """Filter markdown sections whose glob entries match exclude patterns in full."""
     if not exclude_globs:
         return text, []
 
-    patterns = [
-        p.strip() for raw in exclude_globs for p in raw.split(",") if p.strip()
-    ]
+    patterns = [p.strip() for raw in exclude_globs for p in raw.split(",") if p.strip()]
     if not patterns:
         return text, []
 

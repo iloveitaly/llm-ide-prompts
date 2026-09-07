@@ -283,7 +283,9 @@ def copy_directory_contents(
             if exclude_filenames:
                 file_stem = item.name.split(".")[0]
                 if file_stem in exclude_filenames or item.stem in exclude_filenames:
-                    log.debug("excluding file matching excluded section", file=relative_str)
+                    log.debug(
+                        "excluding file matching excluded section", file=relative_str
+                    )
                     continue
 
             # Check if file matches any exclude pattern
@@ -415,12 +417,11 @@ def download_main(
     # Download and extract repository
     repo_dir = download_and_extract_repo(repo, branch)
 
+    exclude_glob_list: list[str] = []
     if isinstance(exclude_glob, str):
-        exclude_glob_list = [exclude_glob]
+        exclude_glob_list = [str(exclude_glob)]
     elif exclude_glob:
-        exclude_glob_list = list(exclude_glob)
-    else:
-        exclude_glob_list = []
+        exclude_glob_list = [str(item) for item in exclude_glob]
 
     # identify omitted filenames from source instructions if present
     omitted_filenames: set[str] = set()

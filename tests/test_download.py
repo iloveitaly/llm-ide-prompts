@@ -770,4 +770,3 @@ TS rules.
     assert "## Python" not in content
     assert "## Shell" not in content
     assert "## Typescript" in content
-
