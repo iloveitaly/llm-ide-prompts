@@ -13,6 +13,7 @@ from llm_ide_rules.commands.config import config_main
 from llm_ide_rules.commands.delete import delete_main
 from llm_ide_rules.commands.download import download_main
 from llm_ide_rules.commands.explode import explode_main
+from llm_ide_rules.commands.exploded import exploded_main
 from llm_ide_rules.commands.ignores import ignores_main
 from llm_ide_rules.commands.implode import (
     agents,
@@ -70,6 +71,7 @@ def main_callback(
 app.command("explode", help="Convert instruction file to separate rule files")(
     explode_main
 )
+app.command("exploded", help="List clients that were exploded")(exploded_main)
 app.command("ignores", help="Generate list of files to ignore based on instructions")(
     ignores_main
 )

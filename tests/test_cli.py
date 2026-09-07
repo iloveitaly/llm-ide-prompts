@@ -12,6 +12,7 @@ def test_cli_help():
     assert result.exit_code == 0
     assert "CLI tool for managing LLM IDE prompts and rules" in result.stdout
     assert "explode" in result.stdout
+    assert "exploded" in result.stdout
     assert "implode" in result.stdout
     assert "download" in result.stdout
 
@@ -61,6 +62,10 @@ def test_all_commands_accessible():
 
     # Test download command
     result = runner.invoke(app, ["download", "--help"])
+    assert result.exit_code == 0
+
+    # Test exploded command
+    result = runner.invoke(app, ["exploded", "--help"])
     assert result.exit_code == 0
 
 
