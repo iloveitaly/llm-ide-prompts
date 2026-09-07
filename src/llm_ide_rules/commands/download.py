@@ -154,7 +154,10 @@ def download_and_extract_repo(repo: str, branch: str = DEFAULT_BRANCH) -> Path:
 
 
 def copy_instruction_files(
-    repo_dir: Path, instruction_types: list[str], target_dir: Path
+    repo_dir: Path,
+    instruction_types: list[str],
+    target_dir: Path,
+    exclude_filenames: set[str] | None = None,
 ):
     """Copy instruction files from the repository to the target directory."""
     copied_items = []
@@ -187,6 +190,7 @@ def copy_instruction_files(
                     target_subdir,
                     config.get("exclude_patterns", []),
                     config.get("include_patterns", []),
+                    exclude_filenames=exclude_filenames,
                 )
                 copied_items.append(f"{dir_name}/")
 
@@ -267,6 +271,7 @@ def copy_directory_contents(
     target_dir: Path,
     exclude_patterns: list[str],
     include_patterns: list[str] | None = None,
+    exclude_filenames: set[str] | None = None,
 ):
     """Recursively copy directory contents, excluding specified patterns."""
     include_patterns = include_patterns or []
@@ -274,6 +279,12 @@ def copy_directory_contents(
         if item.is_file():
             relative_path = item.relative_to(source_dir)
             relative_str = str(relative_path)
+
+            if exclude_filenames:
+                file_stem = item.name.split(".")[0]
+                if file_stem in exclude_filenames or item.stem in exclude_filenames:
+                    log.debug("excluding file matching excluded section", file=relative_str)
+                    continue
 
             # Check if file matches any exclude pattern
             should_exclude = False
@@ -330,6 +341,13 @@ def download_main(
     target_dir: Annotated[
         str, typer.Option("--target", "-t", help="Target directory to download to")
     ] = ".",
+    exclude_glob: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--exclude-glob",
+            help="Exclude sections matching glob patterns (comma-separated or multiple flags).",
+        ),
+    ] = None,
 ):
     """Download LLM instruction files from GitHub repositories.
 
@@ -353,6 +371,10 @@ def download_main(
     \b
     # Download to a specific directory
     llm_ide_rules download --target ./my-project
+
+    \b
+    # Exclude sections matching glob patterns
+    llm_ide_rules download --exclude-glob "**/*.py"
     """
     target_path = Path(target_dir).resolve()
 
@@ -393,11 +415,35 @@ def download_main(
     # Download and extract repository
     repo_dir = download_and_extract_repo(repo, branch)
 
+    if isinstance(exclude_glob, str):
+        exclude_glob_list = [exclude_glob]
+    elif exclude_glob:
+        exclude_glob_list = list(exclude_glob)
+    else:
+        exclude_glob_list = []
+
+    # identify omitted filenames from source instructions if present
+    omitted_filenames: set[str] = set()
+    instructions_src = repo_dir / "instructions.md"
+    if exclude_glob_list and instructions_src.exists():
+        from llm_ide_rules.constants import header_to_filename
+        from llm_ide_rules.markdown_parser import filter_markdown_by_globs
+
+        _, omitted_headers = filter_markdown_by_globs(
+            instructions_src.read_text(encoding="utf-8"), exclude_glob_list
+        )
+        omitted_filenames = {header_to_filename(h) for h in omitted_headers}
+
     try:
         # Copy instruction files
         copied_items = [
             f"Downloaded: {item}"
-            for item in copy_instruction_files(repo_dir, instruction_types, target_path)
+            for item in copy_instruction_files(
+                repo_dir,
+                instruction_types,
+                target_path,
+                exclude_filenames=omitted_filenames,
+            )
         ]
 
         # Check for source files (instructions.md, commands.md) and copy them if available
@@ -426,6 +472,21 @@ def download_main(
                                 local_custom_content = local_content.split(marker, 1)[1]
 
                         remote_content = src.read_text(encoding="utf-8")
+                        if exclude_glob_list:
+                            from llm_ide_rules.markdown_parser import (
+                                filter_markdown_by_globs,
+                            )
+
+                            remote_content, omitted_headers = filter_markdown_by_globs(
+                                remote_content, exclude_glob_list
+                            )
+                            if omitted_headers:
+                                log.info(
+                                    "omitted sections matching exclude globs",
+                                    source_file=source_file,
+                                    omitted=omitted_headers,
+                                )
+
                         if marker not in remote_content:
                             remote_content += f"\n\n{marker}\n"
 
@@ -437,6 +498,27 @@ def download_main(
 
                     copied_items.append(f"Downloaded: {source_file}")
                     sources_copied = True
+
+        if omitted_filenames:
+            for filename in omitted_filenames:
+                stale_paths = [
+                    target_path / f".cursor/rules/{filename}.mdc",
+                    target_path / f".cursor/commands/{filename}.md",
+                    target_path / f".claude/rules/{filename}.md",
+                    target_path / f".claude/commands/{filename}.md",
+                    target_path / f".agents/rules/{filename}.md",
+                    target_path / f".agents/skills/{filename}/SKILL.md",
+                    target_path / f".github/instructions/{filename}.instructions.md",
+                    target_path / f".github/prompts/{filename}.prompt.md",
+                    target_path / f".opencode/commands/{filename}.md",
+                ]
+                for stale in stale_paths:
+                    if stale.is_file():
+                        stale.unlink()
+                    if stale.parent.name == filename and stale.parent.is_dir():
+                        import shutil
+
+                        shutil.rmtree(stale.parent, ignore_errors=True)
 
         # Generate rule files locally for supported agents
         explodable_agents = [t for t in instruction_types if t in VALID_AGENTS]

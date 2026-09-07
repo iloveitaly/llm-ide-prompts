@@ -1,5 +1,6 @@
 """Markdown parsing utilities using markdown-it-py."""
 
+import fnmatch
 from typing import NamedTuple
 
 from markdown_it import MarkdownIt
@@ -110,3 +111,69 @@ def parse_sections(text: str) -> tuple[list[str], dict[str, SectionData]]:
         )
 
     return general_lines, sections
+
+
+def filter_markdown_by_globs(
+    text: str, exclude_globs: list[str]
+) -> tuple[str, list[str]]:
+    """Filter markdown sections whose glob entries match exclude patterns in full."""
+    if not exclude_globs:
+        return text, []
+
+    patterns = [
+        p.strip() for raw in exclude_globs for p in raw.split(",") if p.strip()
+    ]
+    if not patterns:
+        return text, []
+
+    md = MarkdownIt()
+    tokens = md.parse(text)
+    lines = text.splitlines(keepends=True)
+
+    # find all H2 headers
+    section_starts = []
+    for i, token in enumerate(tokens):
+        if (
+            token.type == "heading_open"
+            and token.tag == "h2"
+            and i + 1 < len(tokens)
+            and tokens[i + 1].type == "inline"
+        ):
+            header_content = tokens[i + 1].content.strip()
+            if token.map:
+                section_starts.append((token.map[0], header_content))
+
+    if not section_starts:
+        return text, []
+
+    first_section_start = section_starts[0][0]
+    result_lines = list(lines[:first_section_start])
+    omitted_headers: list[str] = []
+
+    for i, (start_line, header_name) in enumerate(section_starts):
+        end_line = (
+            section_starts[i + 1][0] if i + 1 < len(section_starts) else len(lines)
+        )
+        section_content = lines[start_line:end_line]
+        _, glob_pattern = extract_glob_directive(section_content)
+
+        if glob_pattern is None:
+            result_lines.extend(section_content)
+            continue
+
+        section_globs = [g.strip() for g in glob_pattern.split(",") if g.strip()]
+        if not section_globs:
+            result_lines.extend(section_content)
+            continue
+
+        # all globs in section must match an exclude pattern for section to be omitted
+        all_matched = all(
+            any(fnmatch.fnmatch(sg, pat) for pat in patterns) for sg in section_globs
+        )
+        if not all_matched:
+            result_lines.extend(section_content)
+            continue
+
+        omitted_headers.append(header_name)
+
+    return "".join(result_lines), omitted_headers

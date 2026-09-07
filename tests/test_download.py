@@ -580,3 +580,194 @@ def test_download_explicit_types_bypass_auto_detect(
     assert "Detected active agents:" not in result.stdout
     assert (target_dir / ".claude" / "rules" / "python.md").exists()
     assert not (target_dir / ".cursor" / "rules").exists()
+
+
+@patch("llm_ide_rules.commands.download.requests.get")
+@patch("llm_ide_rules.commands.download.zipfile.ZipFile")
+def test_download_with_exclude_glob(mock_zipfile, mock_requests, tmp_path: Path):
+    """Test download with --exclude-glob omits matching sections and rules."""
+    runner = CliRunner()
+
+    mock_response = Mock()
+    mock_response.content = b"fake zip content"
+    mock_response.raise_for_status = Mock()
+    mock_requests.return_value = mock_response
+
+    mock_zip_instance = Mock()
+    mock_zipfile.return_value.__enter__.return_value = mock_zip_instance
+
+    def mock_extractall(path):
+        extract_path = Path(path)
+        extracted_dir = extract_path / "llm_ide_rules-master"
+        extracted_dir.mkdir(parents=True, exist_ok=True)
+        instructions = """# Instructions
+General rules.
+
+## Python
+globs: **/*.py
+
+Python rules.
+
+## React
+globs: **/*.tsx
+
+React rules.
+"""
+        (extracted_dir / "instructions.md").write_text(instructions, encoding="utf-8")
+
+    mock_zip_instance.extractall = mock_extractall
+
+    target_dir = tmp_path / "project"
+    target_dir.mkdir()
+    (target_dir / ".cursor").mkdir()
+
+    result = runner.invoke(
+        app,
+        [
+            "download",
+            "cursor",
+            "agents",
+            "--target",
+            str(target_dir),
+            "--exclude-glob",
+            "**/*.py",
+        ],
+    )
+
+    assert result.exit_code == 0
+    downloaded_instructions = (target_dir / "instructions.md").read_text(
+        encoding="utf-8"
+    )
+    assert "## React" in downloaded_instructions
+    assert "globs: **/*.tsx" in downloaded_instructions
+    assert "React rules." in downloaded_instructions
+    assert "## Python" not in downloaded_instructions
+    assert "Python rules." not in downloaded_instructions
+
+    # Verify exploded rules
+    assert (target_dir / ".cursor" / "rules" / "react.mdc").exists()
+    assert not (target_dir / ".cursor" / "rules" / "python.mdc").exists()
+
+    # Verify AGENTS.md
+    agents_content = (target_dir / "AGENTS.md").read_text(encoding="utf-8")
+    assert "React rules." in agents_content
+    assert "Python rules." not in agents_content
+
+
+@patch("llm_ide_rules.commands.download.requests.get")
+@patch("llm_ide_rules.commands.download.zipfile.ZipFile")
+def test_download_with_exclude_glob_skips_preexploded_files(
+    mock_zipfile, mock_requests, tmp_path: Path
+):
+    """Test download with --exclude-glob removes pre-exploded matching files."""
+    runner = CliRunner()
+
+    mock_response = Mock()
+    mock_response.content = b"fake zip content"
+    mock_response.raise_for_status = Mock()
+    mock_requests.return_value = mock_response
+
+    mock_zip_instance = Mock()
+    mock_zipfile.return_value.__enter__.return_value = mock_zip_instance
+
+    def mock_extractall(path):
+        extract_path = Path(path)
+        extracted_dir = extract_path / "llm_ide_rules-master"
+        extracted_dir.mkdir(parents=True, exist_ok=True)
+        instructions = """## Python
+globs: **/*.py
+
+Python rules.
+
+## React
+globs: **/*.tsx
+
+React rules.
+"""
+        (extracted_dir / "instructions.md").write_text(instructions, encoding="utf-8")
+        cursor_rules = extracted_dir / ".cursor" / "rules"
+        cursor_rules.mkdir(parents=True, exist_ok=True)
+        (cursor_rules / "python.mdc").write_text("old python rule")
+        (cursor_rules / "react.mdc").write_text("old react rule")
+
+    mock_zip_instance.extractall = mock_extractall
+
+    target_dir = tmp_path / "project"
+    target_dir.mkdir()
+
+    result = runner.invoke(
+        app,
+        [
+            "download",
+            "cursor",
+            "--target",
+            str(target_dir),
+            "--exclude-glob",
+            "**/*.py",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert not (target_dir / ".cursor" / "rules" / "python.mdc").exists()
+    assert (target_dir / ".cursor" / "rules" / "react.mdc").exists()
+
+
+@patch("llm_ide_rules.commands.download.requests.get")
+@patch("llm_ide_rules.commands.download.zipfile.ZipFile")
+def test_download_with_exclude_glob_comma_separated(
+    mock_zipfile, mock_requests, tmp_path: Path
+):
+    """Test download with comma-separated exclude globs."""
+    runner = CliRunner()
+
+    mock_response = Mock()
+    mock_response.content = b"fake zip content"
+    mock_response.raise_for_status = Mock()
+    mock_requests.return_value = mock_response
+
+    mock_zip_instance = Mock()
+    mock_zipfile.return_value.__enter__.return_value = mock_zip_instance
+
+    def mock_extractall(path):
+        extract_path = Path(path)
+        extracted_dir = extract_path / "llm_ide_rules-master"
+        extracted_dir.mkdir(parents=True, exist_ok=True)
+        instructions = """## Python
+globs: **/*.py
+
+Python rules.
+
+## Shell
+globs: **/*.sh
+
+Shell rules.
+
+## Typescript
+globs: **/*.ts,**/*.tsx
+
+TS rules.
+"""
+        (extracted_dir / "instructions.md").write_text(instructions, encoding="utf-8")
+
+    mock_zip_instance.extractall = mock_extractall
+
+    target_dir = tmp_path / "project"
+    target_dir.mkdir()
+
+    result = runner.invoke(
+        app,
+        [
+            "download",
+            "--target",
+            str(target_dir),
+            "--exclude-glob",
+            "*.py,**/*.sh",
+        ],
+    )
+
+    assert result.exit_code == 0
+    content = (target_dir / "instructions.md").read_text(encoding="utf-8")
+    assert "## Python" not in content
+    assert "## Shell" not in content
+    assert "## Typescript" in content
+

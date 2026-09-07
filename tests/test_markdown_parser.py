@@ -1,6 +1,10 @@
 """Test markdown parsing utilities."""
 
-from llm_ide_rules.markdown_parser import extract_glob_directive, parse_sections
+from llm_ide_rules.markdown_parser import (
+    extract_glob_directive,
+    filter_markdown_by_globs,
+    parse_sections,
+)
 
 
 def test_extract_glob_directive_lowercase():
@@ -141,3 +145,140 @@ React content.
 
     react_section = sections["React"]
     assert react_section.glob_pattern is None
+
+
+def test_filter_markdown_by_globs_single_exclude():
+    """Test excluding sections matching a single glob pattern."""
+    text = """# Instructions
+General rules.
+
+## Python
+globs: **/*.py
+
+Python rules.
+
+## React
+globs: **/*.tsx
+
+React rules.
+"""
+    filtered, omitted = filter_markdown_by_globs(text, ["**/*.py"])
+
+    assert omitted == ["Python"]
+    assert "## Python" not in filtered
+    assert "Python rules." not in filtered
+    assert "## React" in filtered
+    assert "globs: **/*.tsx" in filtered
+    assert "React rules." in filtered
+    assert "General rules." in filtered
+
+
+def test_filter_markdown_by_globs_comma_separated_exclude():
+    """Test excluding sections using comma-separated glob patterns."""
+    text = """# Instructions
+General rules.
+
+## Alembic Migrations
+globs: migrations/versions/*.py
+
+Migration rules.
+
+## Fastapi
+globs: app/routes/**/*.py
+
+Fastapi rules.
+
+## Shell
+globs: **/*.sh
+
+Shell rules.
+"""
+    filtered, omitted = filter_markdown_by_globs(text, ["*.py,**/*.py"])
+
+    assert "Alembic Migrations" in omitted
+    assert "Fastapi" in omitted
+    assert "## Alembic Migrations" not in filtered
+    assert "## Fastapi" not in filtered
+    assert "## Shell" in filtered
+    assert "Shell rules." in filtered
+
+
+def test_filter_markdown_by_globs_partial_match_preserved():
+    """Test sections with multiple globs are preserved if not all globs match."""
+    text = """# Instructions
+
+## Typescript
+globs: **/*.ts,**/*.tsx
+
+TS rules.
+
+## React
+globs: **/*.tsx
+
+React rules.
+"""
+    # Only excluding ts, so Typescript section should be preserved because tsx is not excluded
+    filtered, omitted = filter_markdown_by_globs(text, ["**/*.ts"])
+
+    assert omitted == []
+    assert "## Typescript" in filtered
+    assert "globs: **/*.ts,**/*.tsx" in filtered
+    assert "## React" in filtered
+
+
+def test_filter_markdown_by_globs_full_match_omitted():
+    """Test sections with multiple globs are omitted when all globs match."""
+    text = """# Instructions
+
+## Typescript
+globs: **/*.ts,**/*.tsx
+
+TS rules.
+
+## React
+globs: **/*.tsx
+
+React rules.
+"""
+    # Both ts and tsx excluded, so Typescript section matches in full and is omitted
+    filtered, omitted = filter_markdown_by_globs(text, ["**/*.ts,**/*.tsx"])
+
+    assert "Typescript" in omitted
+    assert "React" in omitted
+    assert "## Typescript" not in filtered
+    assert "## React" not in filtered
+
+
+def test_filter_markdown_by_globs_no_glob_preserved():
+    """Test sections without globs are always preserved."""
+    text = """# Instructions
+
+## General Coding
+Some general coding instructions without glob.
+
+## Python
+globs: **/*.py
+
+Python rules.
+"""
+    filtered, omitted = filter_markdown_by_globs(text, ["**/*.py"])
+
+    assert omitted == ["Python"]
+    assert "## General Coding" in filtered
+    assert "Some general coding instructions without glob." in filtered
+    assert "## Python" not in filtered
+
+
+def test_filter_markdown_by_globs_empty_or_none():
+    """Test empty or None exclude_globs leaves markdown unchanged."""
+    text = """# Instructions
+
+## Python
+globs: **/*.py
+
+Python rules.
+"""
+    filtered, omitted = filter_markdown_by_globs(text, [])
+    assert filtered == text
+    assert omitted == []
+
