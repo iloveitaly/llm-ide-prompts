@@ -74,6 +74,32 @@ def get_generated_files(target_dir: Path) -> set[Path]:
     return {p.resolve() for p in generated}
 
 
+IGNORED_DIRS = {"node_modules", ".venv"}
+
+
+def find_recursive_files(target_dir: Path, file_pattern: str) -> list[Path]:
+    """Find files matching pattern while ignoring dependency and environment directories."""
+    if not target_dir.is_dir():
+        return []
+
+    matching_files = []
+    for root, dirs, files in target_dir.walk(top_down=True):
+        # prune ignored directories so walk does not descend into them
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
+
+        for file_name in files:
+            file_path = root / file_name
+            if not file_path.is_file():
+                continue
+
+            if not file_path.match(file_pattern):
+                continue
+
+            matching_files.append(file_path)
+
+    return matching_files
+
+
 def find_files_to_delete(
     instruction_types: list[str], target_dir: Path
 ) -> tuple[list[Path], list[Path]]:
@@ -108,8 +134,8 @@ def find_files_to_delete(
                 files_to_delete.append(file_path)
 
         for file_pattern in config.get("recursive_files", []):
-            matching_files = list(target_dir.rglob(file_pattern))
-            files_to_delete.extend([f for f in matching_files if f.is_file()])
+            matching_files = find_recursive_files(target_dir, file_pattern)
+            files_to_delete.extend(matching_files)
 
     # Deduplicate files to delete while preserving order
     files_to_delete = list(dict.fromkeys(files_to_delete))
@@ -215,7 +241,7 @@ def delete_main(
         # Expand directories to files for granular filtering
         expanded_files = []
         for d in dirs_to_delete:
-            expanded_files.extend([f for f in d.rglob("*") if f.is_file()])
+            expanded_files.extend(find_recursive_files(d, "*"))
 
         all_candidates = files_to_delete + expanded_files
 

@@ -258,3 +258,90 @@ def test_delete_directory_with_subdirectories():
 
         assert result.exit_code == 0
         assert not rules_dir.exists()
+
+
+def test_find_files_to_delete_ignores_node_modules_and_venv():
+    """Test finding files to delete ignores node_modules and .venv directories."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        (temp_path / "AGENTS.md").write_text("root")
+
+        node_modules_dir = temp_path / "node_modules" / "some-package"
+        node_modules_dir.mkdir(parents=True)
+        (node_modules_dir / "AGENTS.md").write_text("package agents")
+
+        nested_node_modules = temp_path / "web" / "node_modules" / "pkg"
+        nested_node_modules.mkdir(parents=True)
+        (nested_node_modules / "AGENTS.md").write_text("nested pkg agents")
+
+        venv_dir = temp_path / ".venv" / "lib" / "python"
+        venv_dir.mkdir(parents=True)
+        (venv_dir / "AGENTS.md").write_text("venv agents")
+
+        valid_subdir = temp_path / "packages" / "frontend"
+        valid_subdir.mkdir(parents=True)
+        (valid_subdir / "AGENTS.md").write_text("frontend agents")
+
+        dirs, files = find_files_to_delete(["agents"], temp_path)
+
+        assert len(dirs) == 0
+        assert temp_path / "AGENTS.md" in files
+        assert valid_subdir / "AGENTS.md" in files
+        assert (node_modules_dir / "AGENTS.md") not in files
+        assert (nested_node_modules / "AGENTS.md") not in files
+        assert (venv_dir / "AGENTS.md") not in files
+
+
+def test_delete_everything_ignores_node_modules_and_venv():
+    """Test delete --everything does not delete files in node_modules or .venv."""
+    runner = CliRunner()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        (temp_path / "AGENTS.md").write_text("root")
+
+        node_modules_agents = temp_path / "node_modules" / "pkg" / "AGENTS.md"
+        node_modules_agents.parent.mkdir(parents=True)
+        node_modules_agents.write_text("pkg")
+
+        venv_agents = temp_path / ".venv" / "lib" / "AGENTS.md"
+        venv_agents.parent.mkdir(parents=True)
+        venv_agents.write_text("venv")
+
+        result = runner.invoke(
+            app, ["delete", "--target", temp_dir, "--yes", "--everything"]
+        )
+
+        assert result.exit_code == 0
+        assert not (temp_path / "AGENTS.md").exists()
+        assert node_modules_agents.exists()
+        assert venv_agents.exists()
+
+
+def test_delete_default_ignores_node_modules_and_venv():
+    """Test safe delete does not inspect or report node_modules or .venv files."""
+    runner = CliRunner()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        (temp_path / "instructions.md").write_text(
+            "# Project Instructions\n\nGeneral instructions\n"
+        )
+        (temp_path / "AGENTS.md").write_text("General instructions")
+
+        node_modules_agents = temp_path / "node_modules" / "pkg" / "AGENTS.md"
+        node_modules_agents.parent.mkdir(parents=True)
+        node_modules_agents.write_text("pkg")
+
+        venv_agents = temp_path / ".venv" / "lib" / "AGENTS.md"
+        venv_agents.parent.mkdir(parents=True)
+        venv_agents.write_text("venv")
+
+        result = runner.invoke(app, ["delete", "--target", temp_dir, "--yes"])
+
+        assert result.exit_code == 0
+        assert not (temp_path / "AGENTS.md").exists()
+        assert node_modules_agents.exists()
+        assert venv_agents.exists()
+        assert "were skipped because they don't match" not in result.stdout
+
