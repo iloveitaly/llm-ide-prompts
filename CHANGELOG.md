@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.0](https://github.com/iloveitaly/llm-ide-rules/compare/v0.15.0...v0.16.0) (2026-09-07)
+
+
+### Features
+
+* add exploded command to list active clients ([dba47e5](https://github.com/iloveitaly/llm-ide-rules/commit/dba47e5557811bf680991c1490b58a87f3c2675a))
+* **download:** filter sections by glob patterns ([28ccc46](https://github.com/iloveitaly/llm-ide-rules/commit/28ccc4636d1439353901ec88c0fedaacf8275f82))
+
+
+### Bug Fixes
+
+* **delete:** ignore dependency directories during file traversal ([74d9a5e](https://github.com/iloveitaly/llm-ide-rules/commit/74d9a5e93bd8456c8c71c1bf66c2a8b948531de6))
+* **download:** resolve type errors on exclude globs and format code ([d75bf0f](https://github.com/iloveitaly/llm-ide-rules/commit/d75bf0f260f2fac5fcb4ed5cf0f7164f97e83a23))
+
 ## [0.15.0](https://github.com/iloveitaly/llm-ide-rules/compare/v0.14.0...v0.15.0) (2026-09-05)
 
 
